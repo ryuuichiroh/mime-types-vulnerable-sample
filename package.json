@@ -1,6 +1,6 @@
 {
   "name": "mime-types-vulnerable-sample",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sample project to test OSS vulnerability detection with mime-types 2.1.18",
   "main": "index.js",
   "scripts": {
@@ -15,6 +15,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "mime-types": "2.1.18"
+    "mime-types": "2.1.18",
+    "axios": "0.21.1",
+    "log4js": "6.3.0",
+    "qs": "6.5.2",
+    "semver": "7.3.4",
+    "lodash": "4.17.20"
   }
 }
