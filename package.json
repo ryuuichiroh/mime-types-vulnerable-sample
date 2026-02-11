@@ -1,6 +1,6 @@
 {
   "name": "mime-types-vulnerable-sample",
-  "version": "1.0.3",
+  "version": "1.0.0",
   "description": "Sample project to test OSS vulnerability detection with mime-types 2.1.18",
   "main": "index.js",
   "scripts": {
