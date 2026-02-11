@@ -3,3 +3,12 @@ npm-debug.log
 .DS_Store
 *.log
 .env
+
+# Exclude unnecessary oss-management files
+.oss-management/.git
+.oss-management/node_modules
+.oss-management/.vscode
+.oss-management/.kiro
+.oss-management/docs
+.oss-management/dependency-track
+.oss-management/sbom-*.json
