@@ -51,7 +51,10 @@ function getLicenseId(component: Component): string {
 /**
  * Escape special characters for Markdown
  */
-function escapeMarkdown(text: string): string {
+function escapeMarkdown(text: string | undefined | null): string {
+  if (text === undefined || text === null) {
+    return '';
+  }
   return text
     .replace(/\|/g, '\\|')
     .replace(/\n/g, ' ')
