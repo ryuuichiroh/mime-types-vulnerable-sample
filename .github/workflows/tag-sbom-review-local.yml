@@ -1,0 +1,117 @@
+# Tag SBOM Review (Local)
+# This workflow uses the fixed oss-management scripts from .oss-management directory
+
+name: Tag SBOM Review (Local)
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'release-*'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sbom-review:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      
+      - name: Generate SBOM with Syft
+        run: |
+          syft . -o cyclonedx-json=sbom-current.json
+          echo "SBOM generated successfully"
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      
+      - name: Install OSS management dependencies
+        run: |
+          cd .oss-management
+          npm ci
+      
+      - name: Read version config
+        id: read-config
+        run: |
+          node .oss-management/dist/scripts/config-reader-cli.js
+        continue-on-error: true
+      
+      - name: Resolve previous version
+        id: resolve-version
+        run: |
+          node .oss-management/dist/scripts/version-resolver-cli.js \
+            "${{ github.event.repository.name }}" \
+            "${{ github.ref_name }}"
+        env:
+          DT_BASE_URL: ${{ secrets.DT_BASE_URL }}
+          DT_API_KEY: ${{ secrets.DT_API_KEY }}
+      
+      - name: Get previous SBOM from Dependency-Track
+        id: get-previous-sbom
+        run: |
+          PREVIOUS_VERSION="${{ steps.resolve-version.outputs.previous_version }}"
+          IS_FIRST_VERSION="${{ steps.resolve-version.outputs.is_first_version }}"
+          
+          if [ "$IS_FIRST_VERSION" = "true" ]; then
+            echo "First version detected, using empty SBOM"
+            echo "previous_sbom_exists=false" >> $GITHUB_OUTPUT
+            echo '{"bomFormat":"CycloneDX","specVersion":"1.4","version":1,"components":[]}' > previous-sbom.json
+          else
+            echo "Retrieving SBOM for previous version: $PREVIOUS_VERSION"
+            if node .oss-management/dist/scripts/dt-client-cli.js get-sbom "${{ github.event.repository.name }}" "$PREVIOUS_VERSION" previous-sbom.json; then
+              echo "previous_sbom_exists=true" >> $GITHUB_OUTPUT
+              echo "Previous SBOM found for version: $PREVIOUS_VERSION"
+            else
+              echo "previous_sbom_exists=false" >> $GITHUB_OUTPUT
+              echo "No SBOM found in DT for version: $PREVIOUS_VERSION, using empty SBOM"
+              echo '{"bomFormat":"CycloneDX","specVersion":"1.4","version":1,"components":[]}' > previous-sbom.json
+            fi
+          fi
+        env:
+          DT_BASE_URL: ${{ secrets.DT_BASE_URL }}
+          DT_API_KEY: ${{ secrets.DT_API_KEY }}
+        continue-on-error: true
+      
+      - name: Compare SBOMs
+        run: |
+          node .oss-management/dist/scripts/diff-checker.js sbom-current.json previous-sbom.json diff-result.json
+      
+      - name: Determine license guidelines path
+        id: guidelines-path
+        run: |
+          # Check for custom guidelines in the repository
+          if [ -f "config/license-guidelines.yml" ]; then
+            echo "path=config/license-guidelines.yml" >> $GITHUB_OUTPUT
+            echo "Using custom guidelines from repository"
+          else
+            echo "path=.oss-management/config/license-guidelines.yml" >> $GITHUB_OUTPUT
+            echo "Using default guidelines from .oss-management"
+          fi
+      
+      - name: Create review issue
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          node .oss-management/dist/scripts/issue-creator.js review "$TAG_NAME" diff-result.json "$ARTIFACT_URL" "${{ steps.guidelines-path.outputs.path }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+      
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-tag-${{ github.ref_name }}
+          path: |
+            sbom-current.json
+            diff-result.json
+          retention-days: 90
